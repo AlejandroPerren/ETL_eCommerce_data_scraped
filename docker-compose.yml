@@ -1,28 +1,24 @@
 services:
   etl:
     build: .
-    container_name: etl_ECOMMERCE_DATA_SCRAPED
+    container_name: etl_ecommerce_data_scraped
     volumes:
       - .:/app
     working_dir: /app
     tty: true
     depends_on:
       - postgres
-    environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: etl_db
-      DB_USER: etl_user
-      DB_PASSWORD: etl_pass
+    env_file:
+      - .env
 
   postgres:
     image: postgres:15
     container_name: postgres_container
     restart: always
     environment:
-      POSTGRES_DB: etl_db
-      POSTGRES_USER: etl_user
-      POSTGRES_PASSWORD: etl_pass
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
