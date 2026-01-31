@@ -214,3 +214,114 @@ This design makes the pipeline easy to test, debug, and orchestrate with tools l
     ```bash
     docker-compose down
     ```
+
+
+
+## Airflow Migration Details
+
+After building the initial version of the ETL, I migrated the entire project to be orchestrated with Apache Airflow. This section details the reasoning and technical decisions made during that process.
+
+### Initial Situation (Before Airflow)
+
+Originally, the ETL process was a "manual" set of Python scripts with several limitations:
+
+- **Scattered Scripts:** Logic was spread across multiple standalone scripts.
+- **Manual Execution:** Scripts were run manually (`python script.py`), which was error-prone.
+- **Implicit Dependencies:** The execution order wasn't enforced. For example, running the `transform` script before the `extract` script would break the entire pipeline.
+- **Lack of Production Features:**
+  - No real orchestration.
+  - No automatic retries on failure.
+  - No centralized logging.
+  - No clear data validation steps integrated into the flow.
+  - No versioning of the pipeline as a cohesive workflow.
+
+The main problem was that the pipeline was **neither reproducible nor scalable**.
+
+### Why I Migrated to Airflow
+
+I chose Apache Airflow to build a production-ready pipeline.
+
+- **What I did:**
+  - I converted the ETL logic into a series of tasks within an Airflow DAG.
+  - I leveraged key Airflow features like scheduling, automatic retries, and centralized logging.
+- **Why I did it:**
+  - **Declarative Orchestration:** Airflow allows defining the entire workflow as a Directed Acyclic Graph (DAG), making dependencies explicit.
+  - **Separation of Concerns:** I could enforce a clean separation of responsibilities for `extract`, `transform`, and `load` tasks.
+  - **Resilience and Observability:** Automatic retries and task-level logs make the pipeline more robust and easier to debug.
+  - **Idempotency:** The design ensures that re-running a failed task does not corrupt the final state.
+
+The goal was to transform an artisanal ETL into a reliable and automated data pipeline.
+
+### Airflow Pipeline Design
+
+Before writing the DAG, I defined the logical architecture.
+
+- **Data Layers:**
+  - **Staging:** For basic data cleaning.
+  - **Core:** For the normalized, structured data model.
+  - **Gold:** For business-ready, aggregated data.
+- **DAG Structure:**
+  - The DAG was designed with four clear, sequential tasks: `setup_db` → `extract` → `transform` → `load`.
+  - Each task is designed to be idempotent and re-executable.
+
+#### Database Setup Task (`setup_db`)
+
+- **What it does:**
+  - Creates the `staging`, `core`, and `gold` schemas and tables in the PostgreSQL database.
+  - It executes versioned SQL scripts located in the `/sql` directory.
+- **Problem it solved:**
+  - **Before:** The database schema was managed manually and could become inconsistent.
+  - **After:** The entire database structure is now managed as code, ensuring it is reproducible across any environment.
+
+#### Extract Task
+
+- **Design Decision:**
+  - The `extract` task **does not perform any transformations**. Its only job is to validate that the source CSV files exist, are readable, and have a valid structure.
+- **Why this approach:**
+  - Airflow performance can be degraded if large amounts of data are passed between tasks via XComs. This design keeps the extract step fast and simple.
+  - It allows the pipeline to **fail fast** if the source data is corrupted or missing.
+
+#### Transform Task
+
+- **What I did:**
+  - Centralized all transformation logic in the `transform_dataframes()` function.
+  - Added an explicit `validate_dataframes()` function to check for empty DataFrames, mandatory columns, and other data quality rules.
+  - Implemented defensive cleaning, such as using `df.where(pd.notnull(df), None)` to convert `NaN` values to `None`, which prevents insertion errors in PostgreSQL.
+- **Problem I solved:**
+  - During development, I encountered an `ImportError: cannot import name 'validate_dataframes'`. This was because the validation function was conceptually planned but not yet implemented. I resolved this by defining the function and placing it in `src/transform.py`.
+
+#### Intermediate Data Storage (Parquet)
+
+- **Design Decision:**
+  - To avoid passing large DataFrames between Airflow tasks, I chose to persist the transformed DataFrames to disk as intermediate artifacts.
+  - I used the Parquet file format for this purpose.
+- **Why Parquet:**
+  - **Efficient:** It's more lightweight and faster to read/write than CSV.
+  - **Type Preservation:** It preserves data types, avoiding common issues when reading data back into Pandas.
+- **Problem it solved:**
+  - It decouples the tasks and prevents the Airflow metadata database from bloating with large XComs, leading to a more stable and scalable pipeline.
+
+#### Load Task
+
+- **What it does:**
+  - Reads the intermediate Parquet files (`stg.parquet`, `core.parquet`, `gold.parquet`).
+  - Loads the data into the corresponding PostgreSQL tables (`staging.products_1`, `core.products_2`, `gold.products_classified`).
+- **Technical Decision:**
+  - I used the `if_exists="replace"` strategy when loading data. This is ideal for a reproducible batch ETL where each run processes the entire dataset, preventing duplicate records and corrupted states.
+
+### Key Technical Challenges Solved
+
+1.  **`psycopg2`/`pg_config` Missing:**
+    - **Cause:** Missing system-level dependencies required to compile the `psycopg2` library.
+    - **Solution:** I used the `psycopg2-binary` package, which comes with pre-compiled binaries, simplifying the Docker build.
+2.  **Keeping Transformations in Pandas:**
+    - **Decision:** I avoided adding NumPy as a dependency for transformations, keeping the logic within pure Pandas.
+    - **Result:** This reduced the number of dependencies and potential container-related errors.
+
+### Final Outcome
+
+The result is a fully orchestrated, reproducible, and observable ETL pipeline with:
+
+- ✅ **Clear Data Layers:** Staging, Core, and Gold schemas are well-defined.
+- ✅ **Robust Validations:** Data quality checks are integrated into the workflow.
+- ✅ **Clean & Maintainable Code:** The logic is organized and easy to follow.
