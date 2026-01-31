@@ -41,7 +41,7 @@ The raw data had several issues:
 
 The goal was to build a realistic ETL pipeline that is:
 
-- **Reproducible:** The pipeline should produce the same results every time it runs with the same input.
+- **Idempotency:** The pipeline should produce the same results every time it runs with the same input.
 - **Reliable:** The pipeline should be robust and handle errors gracefully.
 - **Scalable:** The pipeline should be able to handle a growing volume of data.
 - **Airflow-Ready:** The pipeline should be designed for easy integration with Apache Airflow.
@@ -71,7 +71,7 @@ This layered approach helps to separate concerns, improve data quality, and faci
 - **Why we did it:**
   - **Separation of Concerns:** Each step in the ETL process has a clear and distinct responsibility.
   - **Easier Debugging:** Isolating the extraction logic makes it easier to identify and fix issues.
-  - **Re-executability:** A clean extraction step allows the pipeline to be re-run from the beginning without side effects.
+  - **Idempotency:** A clean extraction step allows the pipeline to be re-run from the beginning without side effects.
 
 ### Transform
 
@@ -96,8 +96,8 @@ This is the most critical part of the pipeline, where the data is cleaned, norma
 
 We created separate DataFrames for each layer and data source:
 
-- `df_staging_productos_1`
-- `df_core_productos_2`
+- `df_staging_products_1`
+- `df_core_products_2`
 - `df_gold_products_classified`
 
 Each DataFrame has a clear role, is validated differently, and is loaded into its corresponding schema in the database.

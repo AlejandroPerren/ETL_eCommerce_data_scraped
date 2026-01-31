@@ -2,7 +2,7 @@ import pandas as pd
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-RAW_DIR = BASE_DIR / "data"
+RAW_DIR = BASE_DIR / "data" / "raw"
 
 def extract_data():
     df_full_products = pd.read_csv(RAW_DIR / "productsfull.csv")
