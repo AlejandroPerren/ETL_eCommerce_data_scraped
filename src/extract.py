@@ -5,12 +5,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 RAW_DIR = BASE_DIR / "data" / "raw"
 
 def extract_data():
-    df_full_products = pd.read_csv(RAW_DIR / "productsfull.csv")
-    df_full_products2 = pd.read_csv(RAW_DIR / "productsfull2.csv")
-    df_products_classifield = pd.read_csv(RAW_DIR / "productsclassified.csv")
+    files = [
+        "productsfull.csv",
+        "productsfull2.csv",
+        "productsclassified.csv",
+    ]
 
-    return (
-        df_full_products,
-        df_full_products2,
-        df_products_classifield
-    )
+    for file in files:
+        file_path = RAW_DIR / file
+        if not file_path.exists():
+            raise FileNotFoundError(f"Missing data file: {file_path}")
+
+        pd.read_csv(file_path)
+
+        print(f"[EXTRACT] OK -> {file_path}")
